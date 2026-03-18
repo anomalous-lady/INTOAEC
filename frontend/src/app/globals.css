@@ -1,0 +1,298 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ─────────────────────────────────────────────────────────────
+   IntoAEC Design Tokens
+   Slack dark mode inspired + IntoAEC brand colors
+───────────────────────────────────────────────────────────── */
+@theme {
+  /* Backgrounds */
+  --color-ia-bg: #0f1117;
+  --color-ia-surface: #161b22;
+  --color-ia-surface-hover: #1f2937;
+  --color-ia-surface-active: #1e3a5f;
+  --color-ia-border: #2d3748;
+
+  /* Text */
+  --color-ia-text-primary: #f1f5f9;
+  --color-ia-text-secondary: #94a3b8;
+  --color-ia-text-tertiary: #64748b;
+  --color-ia-text-muted: #475569;
+
+  /* Brand */
+  --color-ia-blue: #3b82f6;
+  --color-ia-blue-hover: #2563eb;
+  --color-ia-blue-muted: rgba(59, 130, 246, 0.15);
+  --color-ia-blue-border: rgba(59, 130, 246, 0.3);
+
+  /* External / WhatsApp-green (visual distinction only) */
+  --color-ia-green: #22c55e;
+  --color-ia-green-muted: rgba(34, 197, 94, 0.12);
+  --color-ia-green-border: rgba(34, 197, 94, 0.4);
+
+  /* Status */
+  --color-ia-online: #22c55e;
+  --color-ia-away: #f59e0b;
+  --color-ia-offline: #6b7280;
+
+  /* Message bubbles */
+  --color-ia-bubble-other: #1f2937;
+  --color-ia-bubble-own: rgba(59, 130, 246, 0.18);
+  --color-ia-system-note: rgba(55, 65, 81, 0.8);
+
+  /* Typography */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  /* Radius */
+  --radius: 0.5rem;
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-bubble: 18px;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   shadcn/ui Dark theme override — always dark for IntoAEC
+───────────────────────────────────────────────────────────── */
+:root {
+  --radius: 0.5rem;
+
+  /* Force dark palette */
+  --background: #0f1117;
+  --foreground: #f1f5f9;
+  --card: #161b22;
+  --card-foreground: #f1f5f9;
+  --popover: #1f2937;
+  --popover-foreground: #f1f5f9;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1f2937;
+  --secondary-foreground: #f1f5f9;
+  --muted: #1f2937;
+  --muted-foreground: #94a3b8;
+  --accent: #1f2937;
+  --accent-foreground: #f1f5f9;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #2d3748;
+  --input: #1f2937;
+  --ring: #3b82f6;
+
+  /* Charts */
+  --chart-1: #3b82f6;
+  --chart-2: #22c55e;
+  --chart-3: #f59e0b;
+  --chart-4: #8b5cf6;
+  --chart-5: #ef4444;
+
+  /* Sidebar tokens */
+  --sidebar: #161b22;
+  --sidebar-foreground: #f1f5f9;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1f2937;
+  --sidebar-accent-foreground: #f1f5f9;
+  --sidebar-border: #2d3748;
+  --sidebar-ring: #3b82f6;
+}
+
+/* identical dark class (keep for shadcn compatibility) */
+.dark {
+  --background: #0f1117;
+  --foreground: #f1f5f9;
+  --card: #161b22;
+  --card-foreground: #f1f5f9;
+  --popover: #1f2937;
+  --popover-foreground: #f1f5f9;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #1f2937;
+  --secondary-foreground: #f1f5f9;
+  --muted: #1f2937;
+  --muted-foreground: #94a3b8;
+  --accent: #1f2937;
+  --accent-foreground: #f1f5f9;
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: #2d3748;
+  --input: #1f2937;
+  --ring: #3b82f6;
+  --sidebar: #161b22;
+  --sidebar-foreground: #f1f5f9;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #1f2937;
+  --sidebar-accent-foreground: #f1f5f9;
+  --sidebar-border: #2d3748;
+  --sidebar-ring: #3b82f6;
+}
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Global base styles
+───────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: #0f1117;
+    color: #f1f5f9;
+    font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+    @apply antialiased;
+    overflow: hidden;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Custom scrollbar – premium dark look
+───────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* ─────────────────────────────────────────────────────────────
+   Chat-specific utilities
+───────────────────────────────────────────────────────────── */
+
+/* Avatar initials circle */
+.avatar-initials {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 0.025em;
+  flex-shrink: 0;
+  border-radius: 6px;
+  color: #fff;
+  user-select: none;
+}
+
+/* Sidebar chat row */
+.chat-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+  margin: 1px 0;
+}
+.chat-row:hover {
+  background: #1f2937;
+}
+.chat-row.active {
+  background: rgba(59, 130, 246, 0.18);
+}
+
+/* Message bubble enter animation */
+@keyframes msgSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.msg-enter {
+  animation: msgSlideIn 0.18s ease-out;
+}
+
+/* System note */
+.system-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Reaction chip */
+.reaction-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.reaction-chip:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.reaction-chip.reacted {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+/* Focus ring for inputs */
+.ia-input-focus:focus {
+  outline: none;
+  ring: 1px solid #3b82f6;
+  box-shadow: 0 0 0 1px #3b82f6;
+}
