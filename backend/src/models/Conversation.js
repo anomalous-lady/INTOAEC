@@ -5,9 +5,11 @@ const conversationSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['direct', 'group', 'ai'],
+      enum: ['direct', 'group', 'ai', 'external'],
       default: 'direct',
     },
+    externalId: { type: String, default: null },
+    isExternal: { type: Boolean, default: false },
     participants: [
       {
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
@@ -74,6 +76,7 @@ const conversationSchema = new mongoose.Schema(
 conversationSchema.index({ 'participants.user': 1 });
 conversationSchema.index({ lastActivity: -1 });
 conversationSchema.index({ directKey: 1 }, { sparse: true });
+conversationSchema.index({ isExternal: 1 });
 
 const Conversation = mongoose.model('Conversation', conversationSchema);
 export default Conversation;

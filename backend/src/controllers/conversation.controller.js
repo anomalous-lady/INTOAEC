@@ -129,7 +129,10 @@ export const getMyConversations = catchAsync(async (req, res) => {
 export const getConversation = catchAsync(async (req, res, next) => {
   const conversation = await Conversation.findOne({
     _id: req.params.conversationId,
-    'participants.user': req.user._id,
+    $or: [
+      { 'participants.user': req.user._id },
+      { type: 'external' }
+    ]
   }).populate('participants.user', 'username displayName avatar isOnline lastSeen');
 
   if (!conversation) return next(new AppError('Conversation not found.', 404));
@@ -219,4 +222,41 @@ export const markAsRead = catchAsync(async (req, res, next) => {
   );
 
   res.status(200).json({ status: 'success', message: 'Marked as read.' });
+});
+
+// ── Get External Conversations (Shared Inbox) ─────────────────────────────────
+export const getExternalConversations = catchAsync(async (req, res) => {
+  const { page = 1, limit = 30 } = req.query;
+  const skip = (parseInt(page) - 1) * parseInt(limit);
+
+  const conversations = await Conversation.find({
+    type: 'external',
+    isExternal: true,
+    isActive: true,
+  })
+    .sort({ lastActivity: -1 })
+    .skip(skip)
+    .limit(parseInt(limit))
+    .populate({
+      path: 'lastMessage',
+      select: 'content messageType sender createdAt isDeleted isExternal externalId',
+    });
+
+  const withUnread = await Promise.all(
+    conversations.map(async (conv) => {
+      const unreadCount = await Message.countDocuments({
+        conversationId: conv._id,
+        isExternal: true,
+        isDeleted: false,
+      });
+
+      return { ...conv.toJSON(), unreadCount };
+    })
+  );
+
+  res.status(200).json({
+    status: 'success',
+    results: withUnread.length,
+    data: { conversations: withUnread },
+  });
 });

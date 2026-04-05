@@ -63,6 +63,9 @@ const messageSchema = new mongoose.Schema(
     // AI metadata
     aiGenerated: { type: Boolean, default: false },
     aiModel: { type: String, default: null },
+    // External (WhatsApp) metadata
+    isExternal: { type: Boolean, default: false },
+    externalId: { type: String, default: null },
   },
   {
     timestamps: true,
@@ -77,6 +80,7 @@ const messageSchema = new mongoose.Schema(
 
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 messageSchema.index({ sender: 1 });
+messageSchema.index({ isExternal: 1 });
 
 const Message = mongoose.model('Message', messageSchema);
 export default Message;

@@ -10,6 +10,7 @@ import {
   addParticipants,
   leaveConversation,
   markAsRead,
+  getExternalConversations,
 } from '../controllers/conversation.controller.js';
 import { protect, requireApproved } from '../middleware/auth.js';
 import validate from '../middleware/validate.js';
@@ -21,6 +22,7 @@ router.use(protect);
 router.use(requireApproved);
 
 router.get('/', getMyConversations);
+router.get('/external', getExternalConversations);
 
 router.post(
   '/group',

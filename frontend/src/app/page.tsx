@@ -59,17 +59,38 @@ export default function Home() {
 
     // Real-time message handler
     socket.on("message:new", (msg) => {
+      const att = msg.attachments?.[0];
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+      const isImage = att?.mimetype?.startsWith("image/");
+      const isAudio = att?.mimetype?.startsWith("audio/");
+
+      let msgType: Message["type"] = "text";
+      if (isImage) msgType = "image";
+      else if (isAudio) msgType = "voice";
+      else if (att) msgType = "file";
+
       const localMsg: Message = {
         id: msg._id,
         roomId: msg.conversationId,
         senderId: msg.sender._id,
-        type: "text",
+        type: msgType,
         content: msg.content ?? "",
+        imageUrl: isImage && att ? `${backendUrl}${att.url}` : undefined,
+        voiceUrl: isAudio && att ? `${backendUrl}${att.url}` : undefined,
+        fileName: (!isImage && !isAudio && att) ? att.originalName : undefined,
+        fileUrl: (!isImage && !isAudio && att) ? `${backendUrl}${att.url}` : undefined,
+        fileSize: att ? `${(att.size / 1024).toFixed(0)} KB` : undefined,
         timestamp: msg.createdAt,
         readBy: msg.readBy?.map((r: { user: string }) => r.user) ?? [],
         reactions: [],
       };
       addIncomingMessage(msg.conversationId, localMsg);
+
+      // If this is a new external conversation we don't have yet, reload
+      const { rooms } = useChatStore.getState();
+      if (!rooms.some(r => r.id === msg.conversationId)) {
+        loadConversations();
+      }
     });
 
     // Incoming call handler
@@ -98,7 +119,7 @@ export default function Home() {
       socket.off("message:new");
       socket.off("webrtc:incoming-call");
     };
-  }, [isAuthenticated, users, addIncomingMessage]);
+  }, [isAuthenticated, users, addIncomingMessage, loadConversations]);
 
   const handleStartCall = (type: "audio" | "video") => {
     if (!selectedRoomId) return;

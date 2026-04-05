@@ -24,6 +24,7 @@ import messageRoutes from './routes/message.routes.js';
 import callRoutes from './routes/call.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import externalRoutes from './routes/external.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -54,8 +55,10 @@ const ALLOWED_ORIGINS = new Set(
 app.use(
   cors({
     origin: (origin, callback) => {
-  callback(null, true);
-},
+      if (process.env.NODE_ENV === 'development') return callback(null, true); // Allow any origin for easy LAN dev testing
+      if (!origin || ALLOWED_ORIGINS.has(origin)) return callback(null, true);
+      callback(new Error(`CORS: origin '${origin}' not allowed`));
+    },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
@@ -119,6 +122,8 @@ app.use('/api/calls', callRoutes);
 app.use('/api/uploads', uploadRoutes);
 // Admin routes: all protected by protect + restrictTo('admin') inside the router
 app.use('/api/admin', adminRoutes);
+// External (WhatsApp) webhook - NO rate limiting for webhooks
+app.use('/api/external', externalRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.all('*', (req, res, next) => {

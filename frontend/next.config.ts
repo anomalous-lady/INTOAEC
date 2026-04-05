@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  allowedDevOrigins: process.env.LAN_IP ? [process.env.LAN_IP, 'localhost'] : undefined,
 
   // Proxy /api/* and /uploads/* to the backend in development.
   // In production, point NEXT_PUBLIC_API_URL to your deployed backend instead.

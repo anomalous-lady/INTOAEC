@@ -2,14 +2,26 @@
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import { AppError, catchAsync } from '../utils/AppError.js';
+import { sendToWhatsApp } from '../utils/whatsapp.js';
 
 // ── Helper: verify user is in conversation ────────────────────────────────────
 const getConversationForUser = async (conversationId, userId) => {
-  return Conversation.findOne({
+  const conversation = await Conversation.findOne({
     _id: conversationId,
-    'participants.user': userId,
     isActive: true,
   });
+
+  if (!conversation) return null;
+
+  // For external conversations, any authorized user can access (shared inbox)
+  if (conversation.type === 'external') return conversation;
+
+  // For other types, user must be a participant
+  const isParticipant = conversation.participants.some(
+    (p) => p.user.toString() === userId.toString()
+  );
+
+  return isParticipant ? conversation : null;
 };
 
 // ── Get Messages ──────────────────────────────────────────────────────────────
@@ -71,7 +83,20 @@ export const sendMessage = catchAsync(async (req, res, next) => {
     messageType: attachments.length > 0 ? detectFileType(attachments[0].mimetype) : messageType,
     attachments,
     replyTo: replyTo || null,
+    isExternal: conversation.type === 'external',
+    externalId: conversation.type === 'external' ? conversation.externalId : null,
   });
+
+  // If external conversation, send to WhatsApp
+  if (conversation.type === 'external') {
+    try {
+      await sendToWhatsApp(conversation.externalId, content || '', message.messageType);
+    } catch (err) {
+      console.error('Failed to send to WhatsApp:', err.message);
+      // We still save the message to our DB even if WhatsApp fails, 
+      // but maybe we should flag it or tell the user?
+    }
+  }
 
   // Update conversation lastMessage and lastActivity
   await Conversation.findByIdAndUpdate(conversationId, {
@@ -81,7 +106,23 @@ export const sendMessage = catchAsync(async (req, res, next) => {
 
   await message.populate('sender', 'username displayName avatar');
 
-  // Emit via socket (handled in socket layer, here we just return the message)
+  // Emit via socket
+  const io = req.app.get('io');
+  if (io) {
+    const broadcastPayload = message.toJSON();
+    io.to(`conversation:${conversationId}`).emit('message:new', broadcastPayload);
+
+    conversation.participants.forEach((p) => {
+      const pid = p.user.toString();
+      if (pid !== req.user._id.toString()) {
+        io.to(`user:${pid}`).emit('notification:message', {
+          conversationId,
+          message: broadcastPayload,
+        });
+      }
+    });
+  }
+
   res.status(201).json({ status: 'success', data: { message } });
 });
 

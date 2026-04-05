@@ -13,7 +13,9 @@ import logger from '../config/logger.js';
 export const initSocket = (httpServer) => {
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || 'http://localhost:3000',
+      origin: process.env.NODE_ENV === 'development' 
+        ? true // In development, allow any origin for easier LAN testing
+        : (process.env.CLIENT_URL || 'http://localhost:3000').split(',').map(u => u.trim()),
       methods: ['GET', 'POST'],
       credentials: true,
     },

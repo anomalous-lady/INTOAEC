@@ -16,7 +16,7 @@ function backendUserToLocal(u: {
   const initials = words.length >= 2
     ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
     : name.slice(0, 2).toUpperCase();
-  const COLORS = ["#3b82f6","#8b5cf6","#f59e0b","#10b981","#ef4444","#ec4899","#14b8a6","#f97316"];
+  const COLORS = ["#3b82f6", "#8b5cf6", "#f59e0b", "#10b981", "#ef4444", "#ec4899", "#14b8a6", "#f97316"];
   const colorIdx = u._id.split("").reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length;
   return {
     id: u._id, name, initials,
@@ -40,7 +40,7 @@ function backendConvToRoom(conv: {
 }, currentUserId: string): Room {
   const isDM = conv.type === "direct";
   let name = conv.name || (isDM ? "Direct Message" : "Group");
-  
+
   // For DMs, use the other person's name
   if (isDM) {
     const other = conv.participants.find(p => p.user._id !== currentUserId);
@@ -172,12 +172,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   loadConversations: async () => {
     set({ isLoadingRooms: true });
     try {
-      const res = await conversationApi.getAll();
-      const convs = (res.data?.conversations ?? []) as Parameters<typeof backendConvToRoom>[0][];
+      const [resAll, resExt] = await Promise.all([
+        conversationApi.getAll(),
+        conversationApi.getExternal(),
+      ]);
+      const allConvs = resAll.data?.conversations ?? [];
+      const extConvs = resExt.data?.conversations ?? [];
+
+      // Deduplicate conversations by ID
+      const convMap = new Map();
+      [...allConvs, ...extConvs].forEach(conv => convMap.set(conv._id, conv));
+      const convs = Array.from(convMap.values()) as Parameters<typeof backendConvToRoom>[0][];
+
       const currentUserId = get().currentUserId;
       const userMap = new Map<string, User>();
       convs.forEach((conv) =>
-        conv.participants.forEach((p) => {
+        conv.participants?.forEach((p) => {
           if (!userMap.has(p.user._id)) userMap.set(p.user._id, backendUserToLocal(p.user));
         })
       );
@@ -337,18 +347,33 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addIncomingMessage: (roomId, msg) => {
     const { selectedRoomId, currentUserId } = get();
-    set((s) => ({
-      messages: {
-        ...s.messages,
-        [roomId]: [...(s.messages[roomId] ?? []), msg],
-      },
-      rooms: s.rooms.map(r => r.id === roomId ? {
-        ...r,
-        lastMessage: msg.content || (msg.type === "image" ? "📷 Image" : msg.type === "voice" ? "🎤 Voice note" : "📎 File"),
-        lastMessageTime: "Just now",
-        unreadCount: selectedRoomId === roomId ? 0 : r.unreadCount + 1,
-      } : r),
-    }));
+    set((s) => {
+      const roomMsgs = s.messages[roomId] ?? [];
+      if (roomMsgs.some((m) => m.id === msg.id)) return s;
+
+      return {
+        messages: {
+          ...s.messages,
+          [roomId]: [...roomMsgs, msg],
+        },
+        rooms: s.rooms.map((r) =>
+          r.id === roomId
+            ? {
+              ...r,
+              lastMessage:
+                msg.content ||
+                (msg.type === "image"
+                  ? "📷 Image"
+                  : msg.type === "voice"
+                    ? "🎤 Voice note"
+                    : "📎 File"),
+              lastMessageTime: "Just now",
+              unreadCount: selectedRoomId === roomId ? 0 : r.unreadCount + 1,
+            }
+            : r
+        ),
+      };
+    });
     // Show notification if not in this room
     if (selectedRoomId !== roomId && msg.senderId !== currentUserId) {
       const room = get().rooms.find(r => r.id === roomId);

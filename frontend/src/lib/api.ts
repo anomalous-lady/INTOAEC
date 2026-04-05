@@ -233,6 +233,8 @@ export const userApi = {
 export const conversationApi = {
   getAll:   (page = 1) =>
     api.get<{ conversations: Conversation[] }>(`/conversations?page=${page}`),
+  getExternal: (page = 1) =>
+    api.get<{ conversations: Conversation[] }>(`/conversations/external?page=${page}`),
   getDirect:(userId: string) =>
     api.get<{ conversation: Conversation }>(`/conversations/direct/${userId}`),
   createGroup: (data: { name: string; participantIds: string[]; description?: string }) =>

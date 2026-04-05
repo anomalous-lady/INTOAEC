@@ -28,7 +28,7 @@ const start = async () => {
   app.set('io', io);
 
   // 5. Start listening
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     logger.info(`🚀 AEC Backend running on port ${PORT} [${process.env.NODE_ENV}]`);
     logger.info(`📡 WebSocket ready`);
     logger.info(`🗄️  MongoDB connected`);
