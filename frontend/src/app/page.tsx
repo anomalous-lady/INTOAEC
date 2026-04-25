@@ -9,6 +9,7 @@ import { ChatWindow } from "@/components/ChatWindow";
 import { ChatInput } from "@/components/ChatInput";
 import { RightPane } from "@/components/RightPane";
 import { CallModal } from "@/components/CallModal";
+import { PlivoDialer } from "@/components/PlivoDialer";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore } from "@/store/authStore";
 import { getSocket } from "@/lib/socket";
@@ -38,6 +39,12 @@ export default function Home() {
     callerId?: string;
   } | null>(null);
 
+  const [plivoCallState, setPlivoCallState] = useState<{
+    open: boolean;
+    phoneNumber: string;
+    conversationId: string;
+  } | null>(null);
+
   useEffect(() => { restoreSession(); }, [restoreSession]);
 
   useEffect(() => {
@@ -59,36 +66,59 @@ export default function Home() {
 
     // Real-time message handler
     socket.on("message:new", (msg) => {
-      const att = msg.attachments?.[0];
+      const att = (msg as any).attachments?.[0];
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
       const isImage = att?.mimetype?.startsWith("image/");
       const isAudio = att?.mimetype?.startsWith("audio/");
+      // messageType "ai" = AI-generated call summary → render as ai-summary
+      const isAiSummary = (msg as any).messageType === "ai" || (msg as any).aiGenerated === true;
+      const isSystem   = (msg as any).messageType === "system";
 
       let msgType: Message["type"] = "text";
-      if (isImage) msgType = "image";
+      if (isAiSummary) msgType = "ai-summary";
+      else if (isSystem) msgType = "system";
+      else if (isImage) msgType = "image";
       else if (isAudio) msgType = "voice";
       else if (att) msgType = "file";
 
+      // sender may be a populated object or a raw ID string
+      const senderId =
+        typeof (msg as any).sender === "object"
+          ? (msg as any).sender._id
+          : (msg as any).sender;
+
+      // Pull structured summaryData if present (AI call summaries)
+      const rawSummary = (msg as any).summaryData;
+      const summaryData = rawSummary ? {
+        overallSummary: rawSummary.overallSummary ?? undefined,
+        actionItems:    Array.isArray(rawSummary.actionItems)  ? rawSummary.actionItems  : [],
+        pricesQuoted:   Array.isArray(rawSummary.pricesQuoted) ? rawSummary.pricesQuoted : [],
+        keyDates:       Array.isArray(rawSummary.keyDates)     ? rawSummary.keyDates     : [],
+        callDuration:   rawSummary.callDuration ?? null,
+        callId:         rawSummary.callId?.toString() ?? null,
+      } : undefined;
+
       const localMsg: Message = {
-        id: msg._id,
-        roomId: msg.conversationId,
-        senderId: msg.sender._id,
+        id: (msg as any)._id,
+        roomId: (msg as any).conversationId,
+        senderId,
         type: msgType,
-        content: msg.content ?? "",
+        content: (msg as any).content ?? "",
         imageUrl: isImage && att ? `${backendUrl}${att.url}` : undefined,
         voiceUrl: isAudio && att ? `${backendUrl}${att.url}` : undefined,
         fileName: (!isImage && !isAudio && att) ? att.originalName : undefined,
-        fileUrl: (!isImage && !isAudio && att) ? `${backendUrl}${att.url}` : undefined,
+        fileUrl:  (!isImage && !isAudio && att) ? `${backendUrl}${att.url}` : undefined,
         fileSize: att ? `${(att.size / 1024).toFixed(0)} KB` : undefined,
-        timestamp: msg.createdAt,
-        readBy: msg.readBy?.map((r: { user: string }) => r.user) ?? [],
+        timestamp: (msg as any).createdAt,
+        readBy: (msg as any).readBy?.map((r: { user: string }) => r.user) ?? [],
         reactions: [],
+        summaryData,
       };
-      addIncomingMessage(msg.conversationId, localMsg);
+      addIncomingMessage((msg as any).conversationId, localMsg);
 
-      // If this is a new external conversation we don't have yet, reload
+      // If this is a conversation we don't have yet, reload
       const { rooms } = useChatStore.getState();
-      if (!rooms.some(r => r.id === msg.conversationId)) {
+      if (!rooms.some(r => r.id === (msg as any).conversationId)) {
         loadConversations();
       }
     });
@@ -115,9 +145,17 @@ export default function Home() {
       });
     });
 
+    // Voice AI Summary handler
+    socket.on("voice:summary-ready", (data) => {
+      console.log("[Socket] Voice AI Summary ready for call:", data.callId);
+      // Optional: Add custom toast or notification here.
+      // The message itself is received via 'message:new' and rendered by the chat window.
+    });
+
     return () => {
       socket.off("message:new");
       socket.off("webrtc:incoming-call");
+      socket.off("voice:summary-ready");
     };
   }, [isAuthenticated, users, addIncomingMessage, loadConversations]);
 
@@ -156,7 +194,7 @@ export default function Home() {
       <div className="flex flex-1 overflow-hidden">
         <Sidebar />
         <main className="flex flex-col flex-1 min-w-0 overflow-hidden" style={{ background: "#0f1117" }}>
-          {selectedRoomId && <ChatHeader onStartCall={handleStartCall} />}
+          {selectedRoomId && <ChatHeader onStartCall={handleStartCall} onStartPlivoCall={(num) => setPlivoCallState({ open: true, conversationId: selectedRoomId, phoneNumber: num })} />}
           <ChatWindow />
           {selectedRoomId && <ChatInput />}
         </main>
@@ -174,6 +212,16 @@ export default function Home() {
           offer={callState.offer}
           callerId={callState.callerId}
           onClose={() => setCallState(null)}
+        />
+      )}
+
+      {/* Plivo PSTN Call Modal */}
+      {plivoCallState?.open && (
+        <PlivoDialer
+          open={plivoCallState.open}
+          conversationId={plivoCallState.conversationId}
+          phoneNumber={plivoCallState.phoneNumber}
+          onClose={() => setPlivoCallState(null)}
         />
       )}
     </div>

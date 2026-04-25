@@ -37,6 +37,9 @@ function backendConvToRoom(conv: {
   participants: { user: { _id: string; displayName?: string; username: string; employeeId?: string } }[];
   lastMessage?: { content?: string; createdAt: string; messageType?: string } | null;
   unreadCount?: number;
+  vendorPhone?: string;
+  vendorCompany?: string;
+  vendorContact?: string;
 }, currentUserId: string): Room {
   const isDM = conv.type === "direct";
   let name = conv.name || (isDM ? "Direct Message" : "Group");
@@ -64,27 +67,43 @@ function backendConvToRoom(conv: {
     lastMessageTime: lastMsg
       ? new Date(lastMsg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
       : "",
+    vendorPhone: conv.vendorPhone,
+    vendorCompany: conv.vendorCompany,
+    vendorContact: conv.vendorContact,
   };
 }
 
 function backendMsgToLocal(msg: {
   _id: string; conversationId: string; sender: { _id: string };
-  content?: string; messageType: string;
+  content?: string; messageType: string; aiGenerated?: boolean;
   attachments?: { url: string; originalName: string; size: number; mimetype: string }[];
   reactions?: { emoji: string; user: string }[];
   createdAt: string; readBy?: { user: string }[];
+  summaryData?: {
+    overallSummary?: string;
+    actionItems?: string[];
+    pricesQuoted?: string[];
+    keyDates?: string[];
+    callDuration?: number | null;
+    callId?: string | null;
+  };
 }): Message {
   const att = msg.attachments?.[0];
   const isImage = att?.mimetype?.startsWith("image/");
   const isAudio = att?.mimetype?.startsWith("audio/");
   const isPdf = att?.mimetype === "application/pdf" || att?.originalName?.endsWith(".pdf");
+  const isAiSummary = msg.messageType === "ai" || msg.aiGenerated === true;
+  const isSystem = msg.messageType === "system";
 
   let type: Message["type"] = "text";
-  if (isImage) type = "image";
+  if (isAiSummary) type = "ai-summary";
+  else if (isSystem) type = "system";
+  else if (isImage) type = "image";
   else if (isAudio) type = "voice";
   else if (isPdf) type = "pdf";
   else if (att) type = "file";
-  else if (msg.messageType === "system") type = "system";
+
+  const BACKEND = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
 
   return {
     id: msg._id,
@@ -92,10 +111,10 @@ function backendMsgToLocal(msg: {
     senderId: msg.sender._id,
     type,
     content: msg.content ?? "",
-    imageUrl: isImage && att ? (`${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"}${att.url}`) : undefined,
-    voiceUrl: isAudio && att ? (`${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"}${att.url}`) : undefined,
+    imageUrl: isImage && att ? `${BACKEND}${att.url}` : undefined,
+    voiceUrl: isAudio && att ? `${BACKEND}${att.url}` : undefined,
     fileName: (!isImage && !isAudio && att) ? att.originalName : undefined,
-    fileUrl: (!isImage && !isAudio && att) ? (`${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000"}${att.url}`) : undefined,
+    fileUrl:  (!isImage && !isAudio && att) ? `${BACKEND}${att.url}` : undefined,
     fileSize: att ? `${(att.size / 1024).toFixed(0)} KB` : undefined,
     timestamp: msg.createdAt,
     readBy: msg.readBy?.map((r) => r.user) ?? [],
@@ -106,6 +125,14 @@ function backendMsgToLocal(msg: {
         return acc;
       }, {})
     ).map(([emoji, val]) => ({ emoji, ...val })),
+    summaryData: msg.summaryData ? {
+      overallSummary: msg.summaryData.overallSummary,
+      actionItems:    msg.summaryData.actionItems  ?? [],
+      pricesQuoted:   msg.summaryData.pricesQuoted ?? [],
+      keyDates:       msg.summaryData.keyDates     ?? [],
+      callDuration:   msg.summaryData.callDuration ?? null,
+      callId:         msg.summaryData.callId       ?? null,
+    } : undefined,
   };
 }
 
@@ -347,9 +374,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   addIncomingMessage: (roomId, msg) => {
     const { selectedRoomId, currentUserId } = get();
+    const isSystemMsg = msg.type === "system" || msg.type === "ai-summary";
+
     set((s) => {
       const roomMsgs = s.messages[roomId] ?? [];
       if (roomMsgs.some((m) => m.id === msg.id)) return s;
+
+      // Determine sidebar last-message preview text
+      let lastMessagePreview = msg.content || "📎 File";
+      if (msg.type === "image")      lastMessagePreview = "📷 Image";
+      else if (msg.type === "voice") lastMessagePreview = "🎤 Voice note";
+      else if (msg.type === "ai-summary") lastMessagePreview = "🤖 AI Call Summary";
+      else if (msg.type === "system")     lastMessagePreview = "ℹ️ System note";
 
       return {
         messages: {
@@ -360,22 +396,18 @@ export const useChatStore = create<ChatState>((set, get) => ({
           r.id === roomId
             ? {
               ...r,
-              lastMessage:
-                msg.content ||
-                (msg.type === "image"
-                  ? "📷 Image"
-                  : msg.type === "voice"
-                    ? "🎤 Voice note"
-                    : "📎 File"),
+              lastMessage: lastMessagePreview,
               lastMessageTime: "Just now",
-              unreadCount: selectedRoomId === roomId ? 0 : r.unreadCount + 1,
+              // System / AI notes don't bump unread count
+              unreadCount: (selectedRoomId === roomId || isSystemMsg) ? 0 : r.unreadCount + 1,
             }
             : r
         ),
       };
     });
-    // Show notification if not in this room
-    if (selectedRoomId !== roomId && msg.senderId !== currentUserId) {
+
+    // Only show user-sent message notifications — skip system/AI notes
+    if (!isSystemMsg && selectedRoomId !== roomId && msg.senderId !== currentUserId) {
       const room = get().rooms.find(r => r.id === roomId);
       const sender = get().users.find(u => u.id === msg.senderId);
       if (room && sender) {

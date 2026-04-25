@@ -56,6 +56,9 @@ export interface Conversation {
   unreadCount?: number;
   createdAt: string;
   updatedAt: string;
+  vendorPhone?: string;
+  vendorCompany?: string;
+  vendorContact?: string;
 }
 
 export interface Attachment {

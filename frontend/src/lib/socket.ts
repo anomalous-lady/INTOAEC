@@ -46,6 +46,9 @@ export interface ServerToClientEvents {
   'webrtc:peer-left': (data: { userId: string }) => void;
   'webrtc:peer-media-state': (data: { userId: string; audio: boolean; video: boolean }) => void;
 
+  // Voice AI
+  'voice:summary-ready': (data: { conversationId: string; message: Message; callId?: string }) => void;
+
   // Errors
   error: (data: { message: string }) => void;
 }

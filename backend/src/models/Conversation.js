@@ -10,6 +10,9 @@ const conversationSchema = new mongoose.Schema(
     },
     externalId: { type: String, default: null },
     isExternal: { type: Boolean, default: false },
+    vendorPhone: { type: String, default: null },
+    vendorCompany: { type: String, default: null },
+    vendorContact: { type: String, default: null },
     participants: [
       {
         user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

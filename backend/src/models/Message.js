@@ -25,10 +25,15 @@ const messageSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    senderType: {
+      type: String,
+      enum: ['user', 'system'],
+      default: 'user',
+    },
     content: {
       type: String,
       trim: true,
-      maxlength: [5000, 'Message cannot exceed 5000 characters'],
+      maxlength: [10000, 'Message cannot exceed 10000 characters'],
     },
     messageType: {
       type: String,
@@ -63,6 +68,15 @@ const messageSchema = new mongoose.Schema(
     // AI metadata
     aiGenerated: { type: Boolean, default: false },
     aiModel: { type: String, default: null },
+    // Structured AI summary data (for voice call summaries)
+    summaryData: {
+      overallSummary: { type: String, default: null },
+      actionItems: [{ type: String }],
+      pricesQuoted: [{ type: String }],
+      keyDates: [{ type: String }],
+      callDuration: { type: Number, default: null }, // seconds
+      callId: { type: mongoose.Schema.Types.ObjectId, ref: 'Call', default: null },
+    },
     // External (WhatsApp) metadata
     isExternal: { type: Boolean, default: false },
     externalId: { type: String, default: null },
@@ -81,6 +95,7 @@ const messageSchema = new mongoose.Schema(
 messageSchema.index({ conversationId: 1, createdAt: -1 });
 messageSchema.index({ sender: 1 });
 messageSchema.index({ isExternal: 1 });
+messageSchema.index({ senderType: 1 });
 
 const Message = mongoose.model('Message', messageSchema);
 export default Message;

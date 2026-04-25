@@ -7,9 +7,10 @@ import { Button } from "@/components/ui/button";
 
 interface ChatHeaderProps {
   onStartCall?: (type: "audio" | "video") => void;
+  onStartPlivoCall?: (phoneNumber: string) => void;
 }
 
-export function ChatHeader({ onStartCall }: ChatHeaderProps) {
+export function ChatHeader({ onStartCall, onStartPlivoCall }: ChatHeaderProps) {
   const selectedRoom = useSelectedRoom();
   const { toggleRightPane, rightPaneOpen, users } = useChatStore();
   const { user: currentUser } = useAuthStore();
@@ -73,7 +74,14 @@ export function ChatHeader({ onStartCall }: ChatHeaderProps) {
 
       <div className="flex items-center gap-0.5 flex-shrink-0">
         <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/5 rounded-lg" title="Audio call"
-          style={{ color: "#3b82f6" }} onClick={() => onStartCall?.("audio")}>
+          style={{ color: "#3b82f6" }} 
+          onClick={() => {
+            if (selectedRoom.type === "external" && selectedRoom.vendorPhone) {
+              onStartPlivoCall?.(selectedRoom.vendorPhone);
+            } else {
+              onStartCall?.("audio");
+            }
+          }}>
           <Phone className="w-4 h-4" />
         </Button>
         <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-white/5 rounded-lg" title="Video call"

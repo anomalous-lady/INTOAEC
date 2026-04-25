@@ -25,6 +25,7 @@ import callRoutes from './routes/call.routes.js';
 import uploadRoutes from './routes/upload.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import externalRoutes from './routes/external.routes.js';
+import voiceRoutes from './routes/voice.routes.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -124,6 +125,7 @@ app.use('/api/uploads', uploadRoutes);
 app.use('/api/admin', adminRoutes);
 // External (WhatsApp) webhook - NO rate limiting for webhooks
 app.use('/api/external', externalRoutes);
+app.use('/api/voice', voiceRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.all('*', (req, res, next) => {

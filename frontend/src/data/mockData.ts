@@ -36,12 +36,22 @@ export interface Room {
   vendorPhone?: string;
 }
 
-export type MessageType = "text" | "image" | "pdf" | "system" | "voice" | "file";
+export type MessageType = "text" | "image" | "pdf" | "system" | "voice" | "file" | "ai-summary";
 
 export interface Reaction {
   emoji: string;
   count: number;
   reactedByMe: boolean;
+}
+
+/** Structured data extracted from an AI call summary */
+export interface SummaryData {
+  overallSummary?: string;
+  actionItems?: string[];
+  pricesQuoted?: string[];
+  keyDates?: string[];
+  callDuration?: number | null;
+  callId?: string | null;
 }
 
 export interface Message {
@@ -60,6 +70,8 @@ export interface Message {
   timestamp: string;
   readBy: string[];
   reactions: Reaction[];
+  /** Present on AI-generated call summary messages */
+  summaryData?: SummaryData;
 }
 
 export interface Notification {

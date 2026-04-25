@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
-import { Hash, MessageSquare, Plus, Search, ChevronRight, ChevronDown, Users, Inbox, ExternalLink, X, UserSearch } from "lucide-react";
+import { Hash, MessageSquare, Plus, Search, ChevronRight, ChevronDown, Users, Inbox, ExternalLink, X, UserSearch, Phone } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore } from "@/store/authStore";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NewWarRoomModal } from "./NewWarRoomModal";
 import { NewExternalChatModal } from "./NewExternalChatModal";
+import { PlivoDialer } from "./PlivoDialer";
 import { cn } from "@/lib/utils";
 import { userApi, type User as ApiUser } from "@/lib/api";
 
@@ -35,6 +36,7 @@ export function Sidebar() {
   const [dmSearchResults, setDmSearchResults] = useState<ApiUser[]>([]);
   const [dmSearching, setDmSearching] = useState(false);
   const [showDmSearch, setShowDmSearch] = useState(false);
+  const [plivoCall, setPlivoCall] = useState<{ open: boolean; phoneNumber: string; conversationId: string } | null>(null);
 
   useEffect(() => {
     if (selectedRoomId && window.innerWidth < 768) setSidebarOpen(false);
@@ -227,20 +229,34 @@ export function Sidebar() {
             {externalExpanded && (
               <div className="mt-0.5">
                 {externalChats.length === 0 && <p className="px-3 py-1 text-xs" style={{ color: "#475569" }}>No external chats yet</p>}
-                {externalChats.map(room => {
+                  {externalChats.map(room => {
                   const isActive = selectedRoomId === room.id;
                   return (
-                    <button key={room.id} onClick={() => selectRoom(room.id)} className="chat-row w-full text-left border-l-2" style={{ background: isActive ? "rgba(34,197,94,0.1)" : undefined, borderLeftColor: "#22c55e", paddingLeft: 10 }}>
-                      <MessageSquare className="w-4 h-4 flex-shrink-0" style={{ color: "#22c55e" }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-medium truncate" style={{ color: room.unreadCount > 0 ? "#f1f5f9" : "#94a3b8", fontWeight: room.unreadCount > 0 ? 600 : 400 }}>{room.name}</span>
-                          <span className="text-[10px]" style={{ color: "#475569" }}>{room.lastMessageTime}</span>
+                    <div key={room.id} className="relative group">
+                      <button onClick={() => selectRoom(room.id)} className="chat-row w-full text-left border-l-2" style={{ background: isActive ? "rgba(34,197,94,0.1)" : undefined, borderLeftColor: "#22c55e", paddingLeft: 10 }}>
+                        <MessageSquare className="w-4 h-4 flex-shrink-0" style={{ color: "#22c55e" }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-medium truncate" style={{ color: room.unreadCount > 0 ? "#f1f5f9" : "#94a3b8", fontWeight: room.unreadCount > 0 ? 600 : 400 }}>{room.name}</span>
+                            <span className="text-[10px]" style={{ color: "#475569" }}>{room.lastMessageTime}</span>
+                          </div>
+                          <p className="text-[11px] truncate" style={{ color: "#64748b" }}>{room.lastMessage}</p>
                         </div>
-                        <p className="text-[11px] truncate" style={{ color: "#64748b" }}>{room.lastMessage}</p>
-                      </div>
-                      {room.unreadCount > 0 && <Badge className="h-4 min-w-4 px-1 text-[10px] font-bold flex-shrink-0" style={{ background: "#22c55e", color: "#052e16" }}>{room.unreadCount}</Badge>}
-                    </button>
+                        {room.unreadCount > 0 && <Badge className="h-4 min-w-4 px-1 text-[10px] font-bold flex-shrink-0" style={{ background: "#22c55e", color: "#052e16" }}>{room.unreadCount}</Badge>}
+                      </button>
+                      {/* Quick-call button — only shown when vendorPhone is set */}
+                      {room.vendorPhone && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setPlivoCall({ open: true, phoneNumber: room.vendorPhone!, conversationId: room.id }); }}
+                          title={`Call ${room.vendorPhone}`}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full flex items-center justify-center
+                            opacity-0 group-hover:opacity-100 transition-opacity"
+                          style={{ background: "rgba(34,197,94,0.15)", color: "#22c55e", border: "1px solid rgba(34,197,94,0.25)" }}
+                        >
+                          <Phone className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
                   );
                 })}
 
@@ -275,6 +291,16 @@ export function Sidebar() {
 
       <NewWarRoomModal open={warRoomModalOpen} onClose={() => setWarRoomModalOpen(false)} />
       <NewExternalChatModal open={externalModalOpen} onClose={() => setExternalModalOpen(false)} />
+
+      {/* Plivo dialer triggered from sidebar quick-call button */}
+      {plivoCall?.open && (
+        <PlivoDialer
+          open={plivoCall.open}
+          phoneNumber={plivoCall.phoneNumber}
+          conversationId={plivoCall.conversationId}
+          onClose={() => setPlivoCall(null)}
+        />
+      )}
     </>
   );
 }

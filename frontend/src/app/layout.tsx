@@ -22,6 +22,11 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        {/* Plivo Browser SDK v2 — synchronous load required; PlivoDialer polls window.Plivo before calling */}
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script src="https://cdn.plivo.com/sdk/browser/v2/plivo.min.js"></script>
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         {children}
       </body>

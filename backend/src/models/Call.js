@@ -17,7 +17,12 @@ const callSchema = new mongoose.Schema(
     initiator: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'User',
-      required: true,
+      default: null,
+    },
+    callerUserId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      default: null,
     },
     participants: [
       {
@@ -33,7 +38,7 @@ const callSchema = new mongoose.Schema(
     ],
     type: {
       type: String,
-      enum: ['audio', 'video'],
+      enum: ['audio', 'video', 'pstn'],
       default: 'video',
     },
     status: {
@@ -44,9 +49,27 @@ const callSchema = new mongoose.Schema(
     startedAt: { type: Date, default: null },
     endedAt: { type: Date, default: null },
     duration: { type: Number, default: 0 }, // seconds
+    // Plivo sends values like USER_HANGUP, NORMAL_CLEARING, CANCEL, etc.
+    // We intentionally avoid a strict enum here to accept any Plivo HangupCause.
     endReason: {
       type: String,
-      enum: ['normal', 'missed', 'rejected', 'network_error', 'timeout'],
+      default: null,
+    },
+    // Plivo PSTN Fields
+    plivoCallUuid: { type: String, default: null },
+    recordingUrl: { type: String, default: null },
+    transcript: { type: String, default: null },
+    summary: { type: String, default: null },
+    // Structured AI summary data
+    summaryData: {
+      overallSummary: { type: String, default: null },
+      actionItems: [{ type: String }],
+      pricesQuoted: [{ type: String }],
+      keyDates: [{ type: String }],
+    },
+    aiStatus: {
+      type: String,
+      enum: ['pending', 'processing', 'completed', 'failed', null],
       default: null,
     },
   },

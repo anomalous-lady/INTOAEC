@@ -129,9 +129,15 @@ export function ChatWindow() {
 
                     {/* Messages within this date group */}
                     {group.messages.map((msg, idx) => {
-                        if (msg.type === "system") {
+                        // System or AI call-summary notes → render as SystemNote
+                        if (msg.type === "system" || msg.type === "ai-summary") {
                             return (
-                                <SystemNote key={msg.id} content={msg.content} timestamp={msg.timestamp} />
+                                <SystemNote
+                                    key={msg.id}
+                                    content={msg.content}
+                                    timestamp={msg.timestamp}
+                                    summaryData={msg.summaryData}
+                                />
                             );
                         }
 
