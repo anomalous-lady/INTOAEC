@@ -3,6 +3,7 @@
 import { useRef, useState, useCallback, useEffect } from "react";
 import { Paperclip, Send, X, FileText, Mic, MicOff, Square } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
+import { sendTypingStart, sendTypingStop } from "@/lib/socket";
 
 export function ChatInput() {
   const { selectedRoomId, sendMessage, sendFileMessage } = useChatStore();
@@ -18,6 +19,7 @@ export function ChatInput() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     const ta = textareaRef.current;
@@ -39,6 +41,8 @@ export function ChatInput() {
       sendMessage(text.trim(), "text");
       setText("");
       if (textareaRef.current) textareaRef.current.style.height = "auto";
+      sendTypingStop(selectedRoomId);
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     }
   }, [selectedRoomId, text, attachedFiles, sendMessage, sendFileMessage]);
 
@@ -169,7 +173,16 @@ export function ChatInput() {
           <textarea
             ref={textareaRef}
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={e => {
+              setText(e.target.value);
+              if (selectedRoomId) {
+                sendTypingStart(selectedRoomId);
+                if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+                typingTimeoutRef.current = setTimeout(() => {
+                  sendTypingStop(selectedRoomId);
+                }, 3000);
+              }
+            }}
             onKeyDown={handleKeyDown}
             placeholder="Message the team… (Enter to send, Shift+Enter for newline)"
             rows={1}

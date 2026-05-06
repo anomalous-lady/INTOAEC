@@ -5,6 +5,7 @@ import { useChatStore, useSelectedMessages, useSelectedRoom } from "@/store/chat
 import { MessageBubble } from "./MessageBubble";
 import { SystemNote } from "./SystemNote";
 import { Building2, MessageSquareDashed } from "lucide-react";
+import { TypingIndicator } from "./TypingIndicator";
 
 function formatDateLabel(isoString: string): string {
     const d = new Date(isoString);
@@ -20,13 +21,15 @@ function formatDateLabel(isoString: string): string {
 export function ChatWindow() {
     const messages = useSelectedMessages();
     const selectedRoom = useSelectedRoom();
-    const { users, currentUserId } = useChatStore();
+    const { users, currentUserId, typingUsers } = useChatStore();
     const bottomRef = useRef<HTMLDivElement>(null);
+    const roomTypingUsers = selectedRoom ? (typingUsers[selectedRoom.id] || []) : [];
+    const othersTyping = roomTypingUsers.filter(u => u.id !== currentUserId);
 
-    // Auto-scroll to bottom when messages change
+    // Auto-scroll to bottom when messages change or typing status changes
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, [messages]);
+    }, [messages, othersTyping.length]);
 
     // Group messages by date for dividers
     const groups = useMemo(() => {
@@ -169,6 +172,9 @@ export function ChatWindow() {
                     })}
                 </div>
             ))}
+
+            {/* Typing Indicator */}
+            <TypingIndicator typingUsers={othersTyping} />
 
             {/* Scroll anchor */}
             <div ref={bottomRef} className="h-2" />

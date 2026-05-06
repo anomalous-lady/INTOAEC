@@ -43,9 +43,9 @@ export const getOrCreateDirect = catchAsync(async (req, res, next) => {
 
 // ── Create Group Conversation ─────────────────────────────────────────────────
 export const createGroup = catchAsync(async (req, res, next) => {
-  const { name, participantIds, description } = req.body;
+  const { name, participantIds, description, type = 'group', vendorPhone, vendorCompany, vendorContact, externalId } = req.body;
 
-  if (!participantIds || participantIds.length < 1) {
+  if (!participantIds && type !== 'external') {
     return next(new AppError('A group needs at least one other participant.', 400));
   }
 
@@ -68,11 +68,31 @@ export const createGroup = catchAsync(async (req, res, next) => {
     ...users.map((u) => ({ user: u._id, role: 'member' })),
   ];
 
+  // For external conversations, if an externalId is provided it links this
+  // conversation to the WhatsApp sender ID so two-way messaging works.
+  // If none is provided, derive it from vendorPhone (strip leading + if present).
+  const resolvedExternalId = externalId ||
+    (type === 'external' && vendorPhone ? vendorPhone.replace(/^\+/, '') : null);
+
+  // Prevent creating a duplicate external conversation for the same WhatsApp ID
+  if (type === 'external' && resolvedExternalId) {
+    const existing = await Conversation.findOne({ type: 'external', externalId: resolvedExternalId, isActive: true });
+    if (existing) {
+      await existing.populate('participants.user', 'username displayName avatar isOnline');
+      return res.status(200).json({ status: 'success', data: { conversation: existing } });
+    }
+  }
+
   const conversation = await Conversation.create({
-    type: 'group',
+    type: type === 'external' ? 'external' : 'group',
+    isExternal: type === 'external',
     name,
     description,
     participants,
+    vendorPhone,
+    vendorCompany,
+    vendorContact,
+    externalId: resolvedExternalId,
   });
 
   await conversation.populate('participants.user', 'username displayName avatar isOnline');
@@ -237,6 +257,7 @@ export const getExternalConversations = catchAsync(async (req, res) => {
     .sort({ lastActivity: -1 })
     .skip(skip)
     .limit(parseInt(limit))
+    .populate('participants.user', 'username displayName avatar isOnline lastSeen')
     .populate({
       path: 'lastMessage',
       select: 'content messageType sender createdAt isDeleted isExternal externalId',

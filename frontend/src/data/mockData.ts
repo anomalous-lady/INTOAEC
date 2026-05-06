@@ -34,6 +34,7 @@ export interface Room {
   vendorContact?: string;
   vendorEmail?: string;
   vendorPhone?: string;
+  externalId?: string;   // WhatsApp sender ID (country code, no +), used for two-way routing
 }
 
 export type MessageType = "text" | "image" | "pdf" | "system" | "voice" | "file" | "ai-summary";

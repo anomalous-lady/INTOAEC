@@ -240,7 +240,7 @@ export const conversationApi = {
     api.get<{ conversations: Conversation[] }>(`/conversations/external?page=${page}`),
   getDirect:(userId: string) =>
     api.get<{ conversation: Conversation }>(`/conversations/direct/${userId}`),
-  createGroup: (data: { name: string; participantIds: string[]; description?: string }) =>
+  createGroup: (data: { name: string; participantIds: string[]; description?: string; type?: string; vendorPhone?: string; vendorCompany?: string; vendorContact?: string; externalId?: string; }) =>
     api.post<{ conversation: Conversation }>('/conversations/group', data),
   get:      (id: string) =>
     api.get<{ conversation: Conversation }>(`/conversations/${id}`),

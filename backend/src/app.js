@@ -34,6 +34,15 @@ const app = express();
 app.use(requestId);
 app.use(slowRequestLogger);
 
+// ── Ngrok interstitial bypass (harmless in prod, required in dev) ─────────────
+// Plivo webhook requests don't include the browser warning header, so ngrok
+// blocks them with an HTML interstitial. Setting this response header tells
+// ngrok to skip that page for ALL incoming requests.
+app.use((_req, res, next) => {
+  res.setHeader('ngrok-skip-browser-warning', 'true');
+  next();
+});
+
 // ── Security headers ──────────────────────────────────────────────────────────
 app.use(
   helmet({
@@ -112,6 +121,10 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// ── Webhook routes (NO rate limiting — external services must always reach these) ──
+app.use('/api/voice', voiceRoutes);
+app.use('/api/external', externalRoutes);
+
 // ── API routes ────────────────────────────────────────────────────────────────
 app.use('/api', apiLimiter);
 
@@ -123,9 +136,6 @@ app.use('/api/calls', callRoutes);
 app.use('/api/uploads', uploadRoutes);
 // Admin routes: all protected by protect + restrictTo('admin') inside the router
 app.use('/api/admin', adminRoutes);
-// External (WhatsApp) webhook - NO rate limiting for webhooks
-app.use('/api/external', externalRoutes);
-app.use('/api/voice', voiceRoutes);
 
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.all('*', (req, res, next) => {

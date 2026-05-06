@@ -179,9 +179,9 @@ export function PlivoDialer({ conversationId, phoneNumber, open, onClose }: Pliv
 
     const setup = async () => {
       try {
-        // 1. Fetch JWT from backend
-        const res = await api.get<{ data: { token: string } }>("/voice/plivo/token");
-        const token = res.data?.data?.token;
+        // 1. Fetch JWT token from backend
+        const res = await api.get<{ token: string; endpoint: string }>("/voice/plivo/token");
+        const token = res.data?.token;
         if (!token) throw new Error("No token received from server");
 
         // 2. Verify Plivo Browser SDK is loaded via CDN (layout.tsx injects the script)
@@ -192,7 +192,6 @@ export function PlivoDialer({ conversationId, phoneNumber, open, onClose }: Pliv
         setCallStatus("logging-in");
 
         // 3. Instantiate Plivo Browser SDK v2
-        //    Constructor: new Plivo(options) — the .client property holds all methods/events
         const plivoWebSdk = new (window as any).Plivo({
           debug: "ERROR",
           permOnClick: true,
@@ -241,8 +240,6 @@ export function PlivoDialer({ conversationId, phoneNumber, open, onClose }: Pliv
         plivoWebSdk.client.on("onCallTerminated", (cause?: string) => {
           stopTimer();
           setCallStatus("ai-processing");
-          // The backend will process the recording and push the AI note via socket.
-          // Auto-close the dialer after a short waiting period.
           autoCloseRef.current = setTimeout(() => {
             setCallStatus("ended");
             setTimeout(onClose, 1500);
@@ -262,7 +259,6 @@ export function PlivoDialer({ conversationId, phoneNumber, open, onClose }: Pliv
         });
 
         plivoWebSdk.client.on("onConnectionChange", ({ state }: { state: string }) => {
-          // state can be: 'connected', 'disconnected', 'connecting'
           if (state === "disconnected" && callStatus === "active") {
             stopTimer();
             setSdkError("Network connection lost");
@@ -271,8 +267,7 @@ export function PlivoDialer({ conversationId, phoneNumber, open, onClose }: Pliv
         });
 
         // 4. Login using JWT token (Plivo Browser SDK v2 JWT auth)
-        //    loginWithToken is the JWT-based method; login(user, pass) is SIP-credential auth
-        plivoWebSdk.client.loginWithToken(token);
+        plivoWebSdk.client.loginWithAccessToken(token);
 
       } catch (err: any) {
         console.error("[PlivoDialer] setup error:", err);

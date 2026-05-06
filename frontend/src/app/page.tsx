@@ -37,6 +37,7 @@ export default function Home() {
     roomId?: string;
     offer?: RTCSessionDescriptionInit;
     callerId?: string;
+    targetUserId?: string;
   } | null>(null);
 
   const [plivoCallState, setPlivoCallState] = useState<{
@@ -64,15 +65,14 @@ export default function Home() {
     const socket = getSocket();
     if (!socket) return;
 
-    // Real-time message handler
-    socket.on("message:new", (msg) => {
-      const att = (msg as any).attachments?.[0];
+    // Common message handler
+    const handleNewMessage = (msg: any) => {
+      const att = msg.attachments?.[0];
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
       const isImage = att?.mimetype?.startsWith("image/");
       const isAudio = att?.mimetype?.startsWith("audio/");
-      // messageType "ai" = AI-generated call summary → render as ai-summary
-      const isAiSummary = (msg as any).messageType === "ai" || (msg as any).aiGenerated === true;
-      const isSystem   = (msg as any).messageType === "system";
+      const isAiSummary = msg.messageType === "ai" || msg.aiGenerated === true;
+      const isSystem   = msg.messageType === "system";
 
       let msgType: Message["type"] = "text";
       if (isAiSummary) msgType = "ai-summary";
@@ -81,14 +81,12 @@ export default function Home() {
       else if (isAudio) msgType = "voice";
       else if (att) msgType = "file";
 
-      // sender may be a populated object or a raw ID string
       const senderId =
-        typeof (msg as any).sender === "object"
-          ? (msg as any).sender._id
-          : (msg as any).sender;
+        typeof msg.sender === "object"
+          ? msg.sender._id
+          : msg.sender;
 
-      // Pull structured summaryData if present (AI call summaries)
-      const rawSummary = (msg as any).summaryData;
+      const rawSummary = msg.summaryData;
       const summaryData = rawSummary ? {
         overallSummary: rawSummary.overallSummary ?? undefined,
         actionItems:    Array.isArray(rawSummary.actionItems)  ? rawSummary.actionItems  : [],
@@ -99,29 +97,34 @@ export default function Home() {
       } : undefined;
 
       const localMsg: Message = {
-        id: (msg as any)._id,
-        roomId: (msg as any).conversationId,
+        id: msg._id,
+        roomId: msg.conversationId,
         senderId,
         type: msgType,
-        content: (msg as any).content ?? "",
+        content: msg.content ?? "",
         imageUrl: isImage && att ? `${backendUrl}${att.url}` : undefined,
         voiceUrl: isAudio && att ? `${backendUrl}${att.url}` : undefined,
         fileName: (!isImage && !isAudio && att) ? att.originalName : undefined,
         fileUrl:  (!isImage && !isAudio && att) ? `${backendUrl}${att.url}` : undefined,
         fileSize: att ? `${(att.size / 1024).toFixed(0)} KB` : undefined,
-        timestamp: (msg as any).createdAt,
-        readBy: (msg as any).readBy?.map((r: { user: string }) => r.user) ?? [],
+        timestamp: msg.createdAt,
+        readBy: msg.readBy?.map((r: { user: string }) => r.user) ?? [],
         reactions: [],
         summaryData,
       };
-      addIncomingMessage((msg as any).conversationId, localMsg);
+      addIncomingMessage(msg.conversationId, localMsg);
 
-      // If this is a conversation we don't have yet, reload
       const { rooms } = useChatStore.getState();
-      if (!rooms.some(r => r.id === (msg as any).conversationId)) {
+      if (!rooms.some(r => r.id === msg.conversationId)) {
         loadConversations();
       }
-    });
+    };
+
+    // Real-time message handler
+    socket.on("message:new", handleNewMessage);
+    
+    // Notification handler for messages in unselected rooms
+    socket.on("notification:message", (data) => handleNewMessage(data.message));
 
     // Incoming call handler
     socket.on("webrtc:incoming-call", ({ roomId, callType, offer, caller }) => {
@@ -148,16 +151,40 @@ export default function Home() {
     // Voice AI Summary handler
     socket.on("voice:summary-ready", (data) => {
       console.log("[Socket] Voice AI Summary ready for call:", data.callId);
-      // Optional: Add custom toast or notification here.
-      // The message itself is received via 'message:new' and rendered by the chat window.
+    });
+
+    // Typing handlers
+    const { addTypingUser, removeTypingUser } = useChatStore.getState();
+    socket.on("typing:start", (data) => {
+      const displayName = data.user.displayName || data.user.username;
+      addTypingUser(data.conversationId, data.user._id, displayName);
+    });
+    socket.on("typing:stop", (data) => {
+      removeTypingUser(data.conversationId, data.userId || data.user?._id);
     });
 
     return () => {
       socket.off("message:new");
+      socket.off("notification:message");
       socket.off("webrtc:incoming-call");
       socket.off("voice:summary-ready");
+      socket.off("typing:start");
+      socket.off("typing:stop");
     };
   }, [isAuthenticated, users, addIncomingMessage, loadConversations]);
+
+  // Join active conversation room for real-time messages & typing events
+  useEffect(() => {
+    if (!isAuthenticated || !selectedRoomId) return;
+    
+    const socket = getSocket();
+    if (socket) {
+      socket.emit('conversation:join', selectedRoomId);
+      return () => {
+        socket.emit('conversation:leave', selectedRoomId);
+      };
+    }
+  }, [isAuthenticated, selectedRoomId]);
 
   const handleStartCall = (type: "audio" | "video") => {
     if (!selectedRoomId) return;
@@ -169,6 +196,7 @@ export default function Home() {
       conversationId: selectedRoomId,
       callType: type,
       mode: "outgoing",
+      targetUserId: otherUserId,
       remoteUser: otherUser
         ? { name: otherUser.name, initials: otherUser.initials, avatarColor: otherUser.avatarColor }
         : { name: room?.name ?? "Unknown", initials: (room?.name ?? "??").slice(0, 2).toUpperCase(), avatarColor: "#3b82f6" },
@@ -211,6 +239,7 @@ export default function Home() {
           roomId={callState.roomId}
           offer={callState.offer}
           callerId={callState.callerId}
+          targetUserId={callState.targetUserId}
           onClose={() => setCallState(null)}
         />
       )}

@@ -15,6 +15,7 @@ export function NewExternalChatModal({ open, onClose }: NewExternalChatModalProp
   const [form, setForm] = useState({
     contactName: "",
     company: "",
+    phoneNumber: "8610090678",
     description: "",
   });
   const [creating, setCreating] = useState(false);
@@ -25,10 +26,9 @@ export function NewExternalChatModal({ open, onClose }: NewExternalChatModalProp
     const name = form.company
       ? `${form.contactName} (${form.company})`
       : form.contactName;
-    // External chats are group conversations with type external
-    // We create them as war rooms with a special name
-    await createWarRoom(name, form.description || `External chat with ${form.contactName}`, []);
-    setForm({ contactName: "", company: "", description: "" });
+    // External chats are created with type "external" and include vendor details
+    await useChatStore.getState().createExternalRoom(name, form.description, form.phoneNumber, form.company, form.contactName);
+    setForm({ contactName: "", company: "", phoneNumber: "", description: "" });
     setCreating(false);
     onClose();
   };
@@ -72,6 +72,12 @@ export function NewExternalChatModal({ open, onClose }: NewExternalChatModalProp
               <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Company <span style={{ color: "#475569" }}>(optional)</span></label>
               <Input value={form.company} onChange={e => setForm(f => ({ ...f, company: e.target.value }))}
                 placeholder="e.g. BuildRight Contractors" className="h-9 text-sm border-0" style={{ background: "#1f2937", color: "#f1f5f9", boxShadow: "0 0 0 1px #374151" }} />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium mb-1.5" style={{ color: "#94a3b8" }}>Phone Number <span style={{ color: "#475569" }}>(optional)</span></label>
+              <Input value={form.phoneNumber} onChange={e => setForm(f => ({ ...f, phoneNumber: e.target.value }))}
+                placeholder="e.g. +1 555 123 4567" className="h-9 text-sm border-0" style={{ background: "#1f2937", color: "#f1f5f9", boxShadow: "0 0 0 1px #374151" }} />
             </div>
 
             <div>

@@ -1,0 +1,24 @@
+## RUNNING THE APP (every time after setup)
+
+You need THREE terminals open at the same time if you want to use the Voice module locally.
+
+Terminal 1 — Backend:
+    cd backend
+    npm run dev
+
+You will see:
+    AEC Backend running on port 5000 [development]
+    WebSocket ready
+    MongoDB connected
+
+Terminal 2 — Frontend:
+    cd frontend
+    npm run dev
+
+Then open: http://localhost:3000
+
+Terminal 3 — Ngrok (For Plivo Voice Webhooks):
+Localhost isn't accessible to external services like Plivo. You need a tunnel:
+    ngrok http 5000
+
+Copy the `https://...ngrok-free.app` URL and update the `NGROK_URL` in your backend `.env` file, then restart the backend.

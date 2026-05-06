@@ -11,7 +11,9 @@ function backendUserToLocal(u: {
   avatar?: string | null; isOnline?: boolean; lastSeen?: string;
   employeeId?: string; email?: string; bio?: string;
 }): User {
-  const name = u.displayName || u.username;
+  // Guard: if the participant wasn't populated (raw ObjectId), skip gracefully
+  if (!u || typeof u !== 'object' || !u._id) return null as unknown as User;
+  const name = u.displayName || u.username || u._id;
   const words = name.trim().split(" ");
   const initials = words.length >= 2
     ? (words[0][0] + words[words.length - 1][0]).toUpperCase()
@@ -38,6 +40,7 @@ function backendConvToRoom(conv: {
   lastMessage?: { content?: string; createdAt: string; messageType?: string } | null;
   unreadCount?: number;
   vendorPhone?: string;
+  externalId?: string;
   vendorCompany?: string;
   vendorContact?: string;
 }, currentUserId: string): Room {
@@ -67,7 +70,8 @@ function backendConvToRoom(conv: {
     lastMessageTime: lastMsg
       ? new Date(lastMsg.createdAt).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true })
       : "",
-    vendorPhone: conv.vendorPhone,
+    vendorPhone: conv.vendorPhone || conv.externalId,
+    externalId: conv.externalId,
     vendorCompany: conv.vendorCompany,
     vendorContact: conv.vendorContact,
   };
@@ -144,6 +148,7 @@ interface ChatState {
   messages: Record<string, Message[]>;
   notifications: Notification[];
   unreadNotifCount: number;
+  typingUsers: Record<string, { id: string; name: string }[]>;
 
   selectedRoomId: string | null;
   sidebarOpen: boolean;
@@ -164,6 +169,7 @@ interface ChatState {
   sendMessage: (content: string, type?: Message["type"], extra?: Partial<Message>) => void;
   sendFileMessage: (conversationId: string, files: File[]) => Promise<void>;
   createWarRoom: (name: string, description: string, memberIds: string[]) => void;
+  createExternalRoom: (name: string, description: string, vendorPhone?: string, vendorCompany?: string, vendorContact?: string, externalId?: string) => Promise<void>;
   startDM: (userId: string) => Promise<void>;
   addNotification: (notif: Omit<Notification, "id">) => void;
   markNotifsRead: () => void;
@@ -177,14 +183,16 @@ interface ChatState {
   markRoomRead: (roomId: string) => void;
   setCurrentUserId: (id: string) => void;
   addIncomingMessage: (roomId: string, msg: Message) => void;
+  addTypingUser: (roomId: string, userId: string, name: string) => void;
+  removeTypingUser: (roomId: string, userId: string) => void;
 }
 
 export const useChatStore = create<ChatState>((set, get) => ({
   users: [], rooms: [], messages: {},
-  notifications: [], unreadNotifCount: 0,
+  notifications: [], unreadNotifCount: 0, typingUsers: {},
   selectedRoomId: null, sidebarOpen: false, rightPaneOpen: false,
   globalSearch: "", sidebarSearch: "",
-  internalExpanded: true, externalExpanded: false,
+  internalExpanded: true, externalExpanded: true,
   currentUserId: "", isLoadingRooms: false,
 
   get selectedRoom() {
@@ -215,7 +223,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const userMap = new Map<string, User>();
       convs.forEach((conv) =>
         conv.participants?.forEach((p) => {
-          if (!userMap.has(p.user._id)) userMap.set(p.user._id, backendUserToLocal(p.user));
+          // Skip if user isn't a populated object (raw ObjectId has no username)
+          if (!p.user || typeof p.user !== 'object' || !('username' in p.user)) return;
+          if (!userMap.has(p.user._id)) {
+            const u = backendUserToLocal(p.user);
+            if (u) userMap.set(p.user._id, u);
+          }
         })
       );
       set({ rooms: convs.map(c => backendConvToRoom(c, currentUserId)), users: Array.from(userMap.values()) });
@@ -357,6 +370,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
     } catch (err) { console.error("Failed to create war room:", err); }
   },
 
+  createExternalRoom: async (name, description, vendorPhone, vendorCompany, vendorContact, externalId) => {
+    try {
+      const res = await conversationApi.createGroup({ 
+        name, 
+        description, 
+        participantIds: [], 
+        type: 'external',
+        vendorPhone,
+        vendorCompany,
+        vendorContact,
+        externalId,
+      });
+      const currentUserId = get().currentUserId;
+      const room = backendConvToRoom(res.data!.conversation as Parameters<typeof backendConvToRoom>[0], currentUserId);
+      set((s) => {
+        const exists = s.rooms.find(r => r.id === room.id);
+        return exists ? {} : { rooms: [...s.rooms, room] };
+      });
+      get().selectRoom(room.id);
+    } catch (err) { console.error("Failed to create external room:", err); }
+  },
+
   addNotification: (notif) => {
     const n: Notification = { ...notif, id: `notif-${Date.now()}` };
     set((s) => ({
@@ -434,6 +469,15 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setCurrentUserId: (id) => set({ currentUserId: id }),
   markRoomRead: (roomId) =>
     set((s) => ({ rooms: s.rooms.map((r) => r.id === roomId ? { ...r, unreadCount: 0 } : r) })),
+  addTypingUser: (roomId, userId, name) => set((s) => {
+    const currentTyping = s.typingUsers[roomId] || [];
+    if (currentTyping.some(u => u.id === userId)) return s;
+    return { typingUsers: { ...s.typingUsers, [roomId]: [...currentTyping, { id: userId, name }] } };
+  }),
+  removeTypingUser: (roomId, userId) => set((s) => {
+    const currentTyping = s.typingUsers[roomId] || [];
+    return { typingUsers: { ...s.typingUsers, [roomId]: currentTyping.filter(u => u.id !== userId) } };
+  }),
 }));
 
 export const useSelectedRoom = () => {

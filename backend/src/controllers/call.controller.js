@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import Call from '../models/Call.js';
 import Conversation from '../models/Conversation.js';
 import { AppError, catchAsync } from '../utils/AppError.js';
+import logger from '../config/logger.js';
 
 // ── Initiate Call ─────────────────────────────────────────────────────────────
 export const initiateCall = catchAsync(async (req, res, next) => {
@@ -22,7 +23,14 @@ export const initiateCall = catchAsync(async (req, res, next) => {
     status: { $in: ['ringing', 'active'] },
   });
 
-  if (activeCall) return next(new AppError('A call is already active in this conversation.', 409));
+  if (activeCall) {
+    if (activeCall.initiator && activeCall.initiator.toString() === req.user._id.toString()) {
+      // Idempotent retry: return the existing ringing call to satisfy React StrictMode double-invoke
+      logger.debug(`[Call] Idempotent initiate for existing call ${activeCall.roomId} by ${req.user._id}`);
+      return res.status(200).json({ status: 'success', data: { call: activeCall } });
+    }
+    return next(new AppError('A call is already active in this conversation.', 409));
+  }
 
   const roomId = uuidv4();
   const participantIds = conversation.participants
@@ -72,10 +80,9 @@ export const joinCall = catchAsync(async (req, res, next) => {
 
 // ── End Call ──────────────────────────────────────────────────────────────────
 export const endCall = catchAsync(async (req, res, next) => {
-  const call = await Call.findOne({
-    roomId: req.params.roomId,
-    status: { $in: ['ringing', 'active'] },
-  });
+  // Find any call with this roomId (not just active/ringing) so we can
+  // also handle the idempotent case where the call was already ended.
+  const call = await Call.findOne({ roomId: req.params.roomId });
 
   if (!call) return next(new AppError('Call not found.', 404));
 
@@ -83,6 +90,11 @@ export const endCall = catchAsync(async (req, res, next) => {
     (p) => p.user.toString() === req.user._id.toString()
   );
   if (!isParticipant) return next(new AppError('You are not a participant in this call.', 403));
+
+  // Idempotent: if call is already ended, return 200 without re-saving
+  if (!['ringing', 'active'].includes(call.status)) {
+    return res.status(200).json({ status: 'success', data: { call } });
+  }
 
   const now = new Date();
   call.status = 'ended';
@@ -93,11 +105,15 @@ export const endCall = catchAsync(async (req, res, next) => {
     call.duration = Math.floor((now - call.startedAt) / 1000);
   }
 
-  // Mark all still-in participants as left
+  // Mark all still-joined participants as left
   call.participants.forEach((p) => {
     if (p.status === 'joined') {
       p.status = 'left';
       p.leftAt = now;
+    }
+    // Also mark missed invitees
+    if (p.status === 'invited') {
+      p.status = 'missed';
     }
   });
 

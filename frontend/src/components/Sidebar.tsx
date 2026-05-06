@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
-import { Hash, MessageSquare, Plus, Search, ChevronRight, ChevronDown, Users, Inbox, ExternalLink, X, UserSearch, Phone } from "lucide-react";
+import { useState, useMemo, useEffect, useCallback } from "react";
+import { Hash, MessageSquare, Plus, Search, ChevronRight, ChevronDown, Users, Inbox, ExternalLink, X, UserSearch, Phone, Zap } from "lucide-react";
 import { useChatStore } from "@/store/chatStore";
 import { useAuthStore } from "@/store/authStore";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,12 @@ import { NewExternalChatModal } from "./NewExternalChatModal";
 import { PlivoDialer } from "./PlivoDialer";
 import { cn } from "@/lib/utils";
 import { userApi, type User as ApiUser } from "@/lib/api";
+
+// ── Pinned quick-access number ────────────────────────────────────────────────
+const MY_PHONE      = "8610090678";          // digits only
+const MY_PHONE_E164 = "+918610090678";       // E.164
+const MY_PHONE_WA   = "918610090678";        // WhatsApp / externalId format (no +)
+const MY_CHAT_NAME  = "My Number (8610090678)";
 
 function Avatar({ initials, color, size = 28, online }: { initials: string; color: string; size?: number; online?: boolean }) {
   return (
@@ -37,6 +43,45 @@ export function Sidebar() {
   const [dmSearching, setDmSearching] = useState(false);
   const [showDmSearch, setShowDmSearch] = useState(false);
   const [plivoCall, setPlivoCall] = useState<{ open: boolean; phoneNumber: string; conversationId: string } | null>(null);
+  const [myBusy, setMyBusy] = useState(false);
+
+  // ── Open / auto-create the pinned external chat for MY_PHONE ──────────────
+  // Matches by vendorPhone (various formats), externalId (WhatsApp format), or name.
+  const findMyRoom = (rooms: ReturnType<typeof useChatStore.getState>["rooms"]) =>
+    rooms.find(
+      (r) => r.type === "external" && (
+        r.externalId === MY_PHONE_WA ||
+        r.vendorPhone === MY_PHONE ||
+        r.vendorPhone === MY_PHONE_E164 ||
+        r.vendorPhone === MY_PHONE_WA ||
+        r.name === MY_CHAT_NAME
+      )
+    );
+
+  const createOrOpenMyChat = useCallback(async () => {
+    const state = useChatStore.getState();
+    state.setExternalExpanded(true);
+    const existing = findMyRoom(state.rooms);
+    if (existing) { state.selectRoom(existing.id); return; }
+    setMyBusy(true);
+    try {
+      // Pass externalId in WhatsApp format so incoming WA messages link here
+      await state.createExternalRoom(MY_CHAT_NAME, "Quick-access external chat", MY_PHONE, "", "My Number", MY_PHONE_WA);
+    } finally { setMyBusy(false); }
+  }, []);
+
+  const openMyCall = useCallback(async () => {
+    const state = useChatStore.getState();
+    state.setExternalExpanded(true);
+    let room = findMyRoom(state.rooms);
+    if (!room) {
+      setMyBusy(true);
+      try { await state.createExternalRoom(MY_CHAT_NAME, "Quick-access external chat", MY_PHONE, "", "My Number", MY_PHONE_WA); }
+      finally { setMyBusy(false); }
+      room = findMyRoom(useChatStore.getState().rooms);
+    }
+    if (room) setPlivoCall({ open: true, phoneNumber: MY_PHONE, conversationId: room.id });
+  }, []);
 
   useEffect(() => {
     if (selectedRoomId && window.innerWidth < 768) setSidebarOpen(false);
@@ -228,7 +273,56 @@ export function Sidebar() {
 
             {externalExpanded && (
               <div className="mt-0.5">
-                {externalChats.length === 0 && <p className="px-3 py-1 text-xs" style={{ color: "#475569" }}>No external chats yet</p>}
+
+                {/* ── Pinned quick-access card for MY_PHONE ── */}
+                <div
+                  className="mx-1 mb-2 rounded-xl overflow-hidden"
+                  style={{ background: "linear-gradient(135deg, rgba(34,197,94,0.08) 0%, rgba(16,185,129,0.05) 100%)", border: "1px solid rgba(34,197,94,0.2)" }}
+                >
+                  {/* top label */}
+                  <div className="flex items-center gap-1.5 px-3 pt-2.5 pb-1">
+                    <Zap className="w-3 h-3" style={{ color: "#22c55e" }} />
+                    <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#22c55e" }}>Quick Access</span>
+                  </div>
+                  {/* number row */}
+                  <div className="flex items-center gap-2 px-3 pb-2.5">
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ background: "rgba(34,197,94,0.15)", border: "1px solid rgba(34,197,94,0.25)" }}
+                    >
+                      <Phone className="w-4 h-4" style={{ color: "#22c55e" }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold" style={{ color: "#f1f5f9" }}>+91 {MY_PHONE}</p>
+                      <p className="text-[10px]" style={{ color: "#64748b" }}>WhatsApp · Plivo</p>
+                    </div>
+                    {/* action buttons */}
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={createOrOpenMyChat}
+                        disabled={myBusy}
+                        title="Open chat"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                        style={{ background: "rgba(34,197,94,0.15)", color: "#4ade80", border: "1px solid rgba(34,197,94,0.25)" }}
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        Chat
+                      </button>
+                      <button
+                        onClick={openMyCall}
+                        disabled={myBusy}
+                        title="Call +91 8610090678"
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-semibold transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                        style={{ background: "rgba(59,130,246,0.15)", color: "#60a5fa", border: "1px solid rgba(59,130,246,0.25)" }}
+                      >
+                        <Phone className="w-3 h-3" />
+                        Call
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {externalChats.length === 0 && <p className="px-3 py-1 text-xs" style={{ color: "#475569" }}>No external chats yet — use the card above to start one</p>}
                   {externalChats.map(room => {
                   const isActive = selectedRoomId === room.id;
                   return (

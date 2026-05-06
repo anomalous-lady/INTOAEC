@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff, Maximize2 } from "lucide-react";
+import { Phone, PhoneOff, Video, VideoOff, Mic, MicOff } from "lucide-react";
 import { callApi } from "@/lib/api";
 import { getSocket } from "@/lib/socket";
 
@@ -13,12 +13,13 @@ interface CallModalProps {
   roomId?: string;
   offer?: RTCSessionDescriptionInit;
   callerId?: string;
+  targetUserId?: string;
   onClose: () => void;
 }
 
 export function CallModal({
   conversationId, callType, mode, remoteUser,
-  roomId: initialRoomId, offer, callerId, onClose
+  roomId: initialRoomId, offer, callerId, targetUserId, onClose
 }: CallModalProps) {
   const [callStatus, setCallStatus] = useState<"ringing" | "connected" | "ended">(
     mode === "incoming" ? "ringing" : "ringing"
@@ -44,7 +45,10 @@ export function CallModal({
     durationTimerRef.current = setInterval(() => setDuration(d => d + 1), 1000);
   };
 
-  const createPeerConnection = useCallback(() => {
+  // Accept an explicit roomId arg so the onicecandidate closure is never stale.
+  // (Calling createPeerConnection before setRoomId triggers a re-render means
+  //  the captured `roomId` state would be "" for outgoing calls.)
+  const createPeerConnection = useCallback((activeRoomId: string) => {
     const pc = new RTCPeerConnection({
       iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
     });
@@ -52,8 +56,8 @@ export function CallModal({
     pc.onicecandidate = (e) => {
       if (e.candidate) {
         const socket = getSocket();
-        const targetId = callerId ?? "";
-        socket?.emit("webrtc:ice-candidate", { targetUserId: targetId, candidate: e.candidate.toJSON(), roomId });
+        const targetId = mode === "outgoing" ? (targetUserId ?? "") : (callerId ?? "");
+        socket?.emit("webrtc:ice-candidate", { targetUserId: targetId, candidate: e.candidate.toJSON(), roomId: activeRoomId });
       }
     };
 
@@ -65,7 +69,7 @@ export function CallModal({
 
     pcRef.current = pc;
     return pc;
-  }, [callerId, roomId]);
+  }, [callerId, targetUserId, mode]);
 
   // Setup socket listeners
   useEffect(() => {
@@ -73,9 +77,14 @@ export function CallModal({
     if (!socket) return;
 
     socket.on("webrtc:call-answered", async ({ answer }) => {
-      await pcRef.current?.setRemoteDescription(new RTCSessionDescription(answer));
-      setCallStatus("connected");
-      startDurationTimer();
+      if (pcRef.current?.signalingState !== "have-local-offer") return; // Ignore stale or duplicate answers in strict mode
+      try {
+        await pcRef.current.setRemoteDescription(new RTCSessionDescription(answer));
+        setCallStatus("connected");
+        startDurationTimer();
+      } catch (err) {
+        console.error("Failed to set remote answer:", err);
+      }
     });
 
     socket.on("webrtc:ice-candidate", async ({ candidate }) => {
@@ -105,72 +114,124 @@ export function CallModal({
   // Start outgoing call
   useEffect(() => {
     if (mode !== "outgoing") return;
+    // Track the roomId locally so the cleanup function can always end the correct call,
+    // even if setRoomId hasn't re-rendered yet.
+    let activeRoomId = "";
+    let cancelled = false;
+
     (async () => {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert("Camera/Microphone access requires a secure connection (HTTPS or localhost).");
+          setCallStatus("ended");
+          setTimeout(onClose, 1000);
+          return;
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: callType === "video",
           audio: true,
         });
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
+
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
         const res = await callApi.initiate(conversationId, callType);
-        const newRoomId = res.data!.call.roomId;
-        setRoomId(newRoomId);
+        if (cancelled) return;
 
-        const pc = createPeerConnection();
+        const newRoomId = res.data!.call.roomId;
+        activeRoomId = newRoomId;           // save locally for cleanup
+        setRoomId(newRoomId);               // update state for UI / hangUp
+
+        const pc = createPeerConnection(newRoomId); // pass roomId explicitly
         stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
         const offerSDP = await pc.createOffer();
         await pc.setLocalDescription(offerSDP);
 
         const socket = getSocket();
-        const targetId = ""; // Will be set from room participants
-        socket?.emit("webrtc:call-user", { targetUserId: targetId, roomId: newRoomId, offer: offerSDP, callType });
+        socket?.emit("webrtc:call-user", { targetUserId: targetUserId ?? "", roomId: newRoomId, offer: offerSDP, callType });
       } catch (err) {
+        if (cancelled) return;
         console.error("Call setup failed:", err);
         setCallStatus("ended");
         setTimeout(onClose, 1000);
       }
     })();
-    return cleanup;
-  }, []);
+
+    return () => {
+      cancelled = true;
+      // Stop media + close PC
+      localStreamRef.current?.getTracks().forEach(t => t.stop());
+      pcRef.current?.close();
+      if (durationTimerRef.current) clearInterval(durationTimerRef.current);
+      // End the DB call record so it doesn't get stuck as "ringing"
+      if (activeRoomId) {
+        callApi.end(activeRoomId, 'normal').catch(() => {});
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Answer incoming call
   useEffect(() => {
     if (mode !== "incoming" || !offer) return;
+    let isCancelled = false;
     (async () => {
       try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          alert("Camera/Microphone access requires a secure connection (HTTPS or localhost).");
+          setCallStatus("ended");
+          setTimeout(onClose, 1000);
+          return;
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
           video: callType === "video",
           audio: true,
         });
+        if (isCancelled) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+
         localStreamRef.current = stream;
         if (localVideoRef.current) localVideoRef.current.srcObject = stream;
 
-        const pc = createPeerConnection();
+        // Use initialRoomId (prop) for the PC since roomId state may not be set yet
+        const activeRoomId = initialRoomId ?? roomId;
+        const pc = createPeerConnection(activeRoomId);
         stream.getTracks().forEach(t => pc.addTrack(t, stream));
 
         await pc.setRemoteDescription(new RTCSessionDescription(offer));
+        if (isCancelled) return;
+
         const answer = await pc.createAnswer();
         await pc.setLocalDescription(answer);
 
         const socket = getSocket();
-        socket?.emit("webrtc:call-answer", { callerId: callerId!, roomId: roomId, answer });
+        socket?.emit("webrtc:call-answer", { callerId: callerId!, roomId: activeRoomId, answer });
         setCallStatus("connected");
         startDurationTimer();
       } catch (err) {
         console.error("Answer failed:", err);
       }
     })();
-  }, []);
+    return () => {
+      isCancelled = true;
+      cleanup();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hangUp = async () => {
     setCallStatus("ended");
     if (roomId) {
-      try { await callApi.end(roomId); } catch {}
       const socket = getSocket();
+      // Emit the socket signal BEFORE the REST API ends the call in the database,
+      // otherwise the backend socket handler won't find the active call and won't notify the peer!
       socket?.emit("webrtc:end-call", { roomId });
+      
+      try { await callApi.end(roomId); } catch {}
     }
     cleanup();
     setTimeout(onClose, 500);
@@ -178,9 +239,10 @@ export function CallModal({
 
   const rejectCall = async () => {
     if (roomId) {
-      try { await callApi.reject(roomId); } catch {}
       const socket = getSocket();
       socket?.emit("webrtc:reject-call", { callerId: callerId!, roomId });
+      
+      try { await callApi.reject(roomId); } catch {}
     }
     onClose();
   };
@@ -212,6 +274,7 @@ export function CallModal({
             <video ref={remoteVideoRef} autoPlay playsInline className="w-full h-full object-cover" style={{ minHeight: 320 }} />
           ) : (
             <div className="flex flex-col items-center gap-4">
+              <video ref={remoteVideoRef} autoPlay playsInline className="hidden" />
               <div className="w-24 h-24 rounded-2xl flex items-center justify-center text-white text-3xl font-bold" style={{ background: remoteUser.avatarColor }}>
                 {remoteUser.initials}
               </div>
